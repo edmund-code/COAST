@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "coast"
+version = "0.1.0"
+description = "Continuous Ordering of Anatomical Structures from Transcriptomics: order cross-sections of a repeated tissue structure along one continuous axis."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "anndata",
+    "scanpy>=1.10",
+    "harmonypy>=2",
+    "elpigraph-python>=0.3.4",
+    "networkx",
+    "statsmodels",
+    "patsy",
+    "joblib",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+tutorial = ["jupyterlab", "ipywidgets", "leidenalg"]
+
+[project.urls]
+Source = "https://github.com/edmund-code/COAST"
+
+[tool.hatch.build.targets.wheel]
+packages = ["coast"]
