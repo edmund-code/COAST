@@ -57,24 +57,29 @@ def curve(adata: AnnData, color: str = "pseudostructure", basis: str | None = No
 
 
 def genes(adata: AnnData, genes: Sequence[str], x: str = "pseudostructure", sample_key: str | None = None,
-          layer: str = "counts", library: str | None = None, n_bins: int = 20, df: int = 6, axes=None):
+          layer: str = "counts", library: str | None = None, n_bins: int = 20, k: int = 10, scale: str = "minmax",
+          axes=None):
     """One panel per gene: equal-count bin means (points) and the fitted curve (line), per sample.
 
     Curves and points cover the 5th to 95th percentile of ``obs[x]`` over all units, the same range for every
-    sample (see `coast.tl.fit_curves`).
+    sample (see `coast.tl.fit_curves`). ``scale="minmax"``: counts per 10k scaled to 0-1 by the lowest and highest
+    point of the gene's curves; ``scale="log"``: counts per 10k on a log axis.
     """
     genes = list(genes)
     limits = np.percentile(adata.obs[x], [5, 95])
     if axes is None:
         _, axes = plt.subplots(1, len(genes), figsize=(3 * len(genes), 2.6), squeeze=False)
         axes = axes[0]
+    curves = 2 ** fit_curves(adata, genes, x=x, sample_key=sample_key, layer=layer, library=library, k=k, limits=limits)
     if sample_key is None:
-        samples, palette = [None], [None]
+        samples, palette, curves = [None], [None], pd.concat({"": curves}, names=["sample"])
     else:
         samples = list(adata.obs[sample_key].astype("category").cat.categories)
         palette = adata.uns.get(f"{sample_key}_colors")
         if palette is None or len(palette) != len(samples):
             palette = [None] * len(samples)
+    low = curves.groupby(level="gene").min().min(axis=1)
+    span = curves.groupby(level="gene").max().max(axis=1) - low
     for sample, colour in zip(samples, palette):
         sub = adata if sample is None else adata[adata.obs[sample_key] == sample]
         counts = sub[:, genes].layers[layer] if layer else sub[:, genes].X
@@ -85,13 +90,18 @@ def genes(adata: AnnData, genes: Sequence[str], x: str = "pseudostructure", samp
         inside = np.flatnonzero((position >= limits[0]) & (position <= limits[1]))
         bins = np.array_split(inside[np.argsort(position[inside])], n_bins)
         bin_x = [position[b].mean() for b in bins]
-        curves = fit_curves(sub, genes, x=x, layer=layer, library=library, df=df, limits=limits)
         for j, (gene, ax) in enumerate(zip(genes, axes)):
-            with np.errstate(divide="ignore"):
-                bin_y = [np.log2(1e4 * counts[b, j].sum() / lib[b].sum()) for b in bins]
-            line, = ax.plot(curves.columns, curves.loc[gene], label=sample, color=colour)
+            bin_y = np.array([1e4 * counts[b, j].sum() / lib[b].sum() for b in bins])   # bins with no counts: not drawn
+            y = curves.loc[(sample or "", gene)].to_numpy()
+            if scale == "minmax":
+                y, bin_y = (y - low[gene]) / span[gene], (bin_y - low[gene]) / span[gene]
+            line, = ax.plot(curves.columns, y, label=sample, color=colour)
             ax.scatter(bin_x, bin_y, s=8, color=line.get_color())
-            ax.set(title=gene, xlabel=x, ylabel="log2 counts per 10k")
+            ax.set(title=gene, xlabel=x)
+            if scale == "log":
+                ax.set(ylabel="counts per 10k", yscale="log")
+            else:
+                ax.set(ylabel="scaled expression (0-1)")
     if sample_key is not None:
         axes[-1].legend(frameon=False, fontsize=8)
     return axes
@@ -99,8 +109,9 @@ def genes(adata: AnnData, genes: Sequence[str], x: str = "pseudostructure", samp
 
 def heatmap(curves: pd.DataFrame, ax=None):
     """Fitted curves (genes x positions, from `coast.tl.fit_curves`) z-scored per gene, ordered by peak."""
+    curves = curves.dropna(how="all")   # genes without a fit
     z = curves.sub(curves.mean(axis=1), axis=0).div(curves.std(axis=1), axis=0)
-    z = z.iloc[np.argsort(np.argmax(z.to_numpy(), axis=1), kind="stable")]
+    z = z.iloc[np.argsort(np.nanargmax(z.to_numpy(), axis=1), kind="stable")]
     ax = ax or plt.figure(figsize=(4, min(8, max(2, 0.12 * len(z))))).gca()
     image = ax.imshow(z.to_numpy(), aspect="auto", cmap="RdBu_r", vmin=-2.5, vmax=2.5,
                       extent=(z.columns[0], z.columns[-1], len(z), 0), interpolation="nearest")
