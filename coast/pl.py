@@ -61,7 +61,7 @@ def genes(adata: AnnData, genes: Sequence[str], x: str = "pseudostructure", samp
     """One panel per gene: equal-count bin means (points) and the fitted curve (line), per sample.
 
     Curves and points cover the 5th to 95th percentile of ``obs[x]`` over all units, the same range for every
-    sample (see `coast.tl.fit_curves`).
+    sample (see `coast.tl.fit_curves`). The y axis is counts per 10k on a log scale.
     """
     genes = list(genes)
     limits = np.percentile(adata.obs[x], [5, 95])
@@ -87,11 +87,10 @@ def genes(adata: AnnData, genes: Sequence[str], x: str = "pseudostructure", samp
         bin_x = [position[b].mean() for b in bins]
         curves = fit_curves(sub, genes, x=x, layer=layer, library=library, df=df, limits=limits)
         for j, (gene, ax) in enumerate(zip(genes, axes)):
-            with np.errstate(divide="ignore"):
-                bin_y = [np.log2(1e4 * counts[b, j].sum() / lib[b].sum()) for b in bins]
-            line, = ax.plot(curves.columns, curves.loc[gene], label=sample, color=colour)
+            bin_y = [1e4 * counts[b, j].sum() / lib[b].sum() for b in bins]   # bins with no counts are not drawn
+            line, = ax.plot(curves.columns, 2 ** curves.loc[gene], label=sample, color=colour)
             ax.scatter(bin_x, bin_y, s=8, color=line.get_color())
-            ax.set(title=gene, xlabel=x, ylabel="log2 counts per 10k")
+            ax.set(title=gene, xlabel=x, ylabel="counts per 10k", yscale="log")
     if sample_key is not None:
         axes[-1].legend(frameon=False, fontsize=8)
     return axes

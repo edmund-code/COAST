@@ -1,7 +1,9 @@
 # fix-fit-curves: before / after
 
 Same COAST calls on mouse kidney Visium HD proximal-tubule units (two healthy, two ischemia-reperfusion kidneys), run with
-`main` (0242f5e, left) and this branch (right). A call that raised is shown as its error.
+`main` (0242f5e, left) and this branch (right). A call that raised is shown as its error. On the branch, `pl.genes` draws
+counts per 10k on a log axis instead of log2 counts per 10k (same curves, readable units, no negative values; bins with no
+counts are not drawn).
 
 1. `pl.genes(..., sample_key="zone")`, one group per proximal-tubule zone: each zone covers only part of the pooled 5-95 %
    range, so `fit_curves` was asked to evaluate the spline outside the group's data and patsy raised. Now NaN there.
