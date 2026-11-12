@@ -99,8 +99,9 @@ def genes(adata: AnnData, genes: Sequence[str], x: str = "pseudostructure", samp
 
 def heatmap(curves: pd.DataFrame, ax=None):
     """Fitted curves (genes x positions, from `coast.tl.fit_curves`) z-scored per gene, ordered by peak."""
+    curves = curves.dropna(how="all")   # genes without a fit
     z = curves.sub(curves.mean(axis=1), axis=0).div(curves.std(axis=1), axis=0)
-    z = z.iloc[np.argsort(np.argmax(z.to_numpy(), axis=1), kind="stable")]
+    z = z.iloc[np.argsort(np.nanargmax(z.to_numpy(), axis=1), kind="stable")]
     ax = ax or plt.figure(figsize=(4, min(8, max(2, 0.12 * len(z))))).gca()
     image = ax.imshow(z.to_numpy(), aspect="auto", cmap="RdBu_r", vmin=-2.5, vmax=2.5,
                       extent=(z.columns[0], z.columns[-1], len(z), 0), interpolation="nearest")

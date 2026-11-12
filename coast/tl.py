@@ -209,7 +209,8 @@ def fit_curves(adata: AnnData, genes, x: str = "pseudostructure", layer: str = "
     Negative-binomial GLM with a cubic B-spline (``df`` degrees of freedom) and a log(library) offset, fitted on
     every unit and evaluated on ``n_points`` evenly spaced positions between ``limits``. By default the limits are
     the 5th and 95th percentiles of ``obs[x]``. A spline is poorly constrained near the first and last units, so
-    the outer 5% at each end still anchor the fit but are not shown. Returns genes x positions.
+    the outer 5% at each end still anchor the fit but are not shown. Positions outside the range of ``obs[x]``, and
+    genes whose fit fails or does not converge, are NaN. Returns genes x positions.
     """
     import patsy
 
@@ -218,7 +219,15 @@ def fit_curves(adata: AnnData, genes, x: str = "pseudostructure", layer: str = "
     design = _spline(position, df)
     limits = np.percentile(position, [5, 95]) if limits is None else limits
     grid = np.linspace(*limits, n_points)
-    on_grid = np.asarray(patsy.build_design_matrices([design.design_info], {"x": grid})[0])
-    curves = [on_grid @ _nb_fit(y[:, j], np.asarray(design), offset)[0] for j in range(y.shape[1])]
-    return pd.DataFrame((np.array(curves) + np.log(1e4)) / np.log(2), index=pd.Index(genes, name="gene"),
+    inside = (grid >= position.min()) & (grid <= position.max())   # the spline is not defined beyond the data
+    on_grid = np.asarray(patsy.build_design_matrices([design.design_info], {"x": grid[inside]})[0])
+    curves = np.full((y.shape[1], n_points), np.nan)
+    for j in range(y.shape[1]):
+        try:
+            beta, _, converged = _nb_fit(y[:, j], np.asarray(design), offset)
+        except (ValueError, np.linalg.LinAlgError):   # a gene with almost no counts
+            continue
+        if converged:
+            curves[j, inside] = on_grid @ beta
+    return pd.DataFrame((curves + np.log(1e4)) / np.log(2), index=pd.Index(genes, name="gene"),
                         columns=pd.Index(np.round(grid, 4), name=x))
